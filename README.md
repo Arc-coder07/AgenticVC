@@ -1,7 +1,7 @@
 # AgenticVC
 
 <div align="center">
-  <img src="./public/screenshot.png" alt="AgenticVC Screenshot" width="800"/>
+  <img src="/public/image1.png" alt="AgenticVC Screenshot" width="800"/>
 </div>
 
 **Stress-test your logic.**
