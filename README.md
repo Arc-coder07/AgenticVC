@@ -46,5 +46,4 @@ npm run dev
 Open [http://localhost:3000](http://localhost:3000) with your browser.
 Expand the **API Configuration** accordion to select your AI Provider, enter your API Key, and toggle between VC/Board modes.
 
-## 🤝 Contributing
-Contributions, issues, and feature requests are welcome! Feel free to check the issues page.
+
