@@ -13,8 +13,8 @@ const outfit = Outfit({
 });
 
 export const metadata: Metadata = {
-  title: "The Synthetic Boardroom",
-  description: "Enterprise Stress-Tester",
+  title: "AgenticVC",
+  description: "AI Venture Capital Partner",
 };
 
 export default function RootLayout({

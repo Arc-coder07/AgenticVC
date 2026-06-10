@@ -4,11 +4,11 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Layers, BrainCircuit, Users, FileOutput, ArrowRight } from 'lucide-react';
 
-export default function HowItWorksDiagram() {
+export default function HowItWorksDiagram({ mode = 'vc' }: { mode?: 'vc' | 'board' }) {
   return (
     <div className="w-full max-w-4xl mx-auto mt-32 mb-20 px-4">
       <div className="text-center mb-12">
-        <h2 className="text-3xl font-serif text-white tracking-tight mb-4">How the Synthetic Boardroom Works</h2>
+        <h2 className="text-3xl font-serif text-white tracking-tight mb-4">How AgenticVC Works</h2>
         <p className="text-slate-400 font-light">A multi-agent autonomous debate system.</p>
       </div>
 
@@ -99,8 +99,8 @@ export default function HowItWorksDiagram() {
           <div className="w-16 h-16 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mb-4">
             <FileOutput className="text-emerald-400 w-8 h-8" />
           </div>
-          <div className="text-white font-medium text-lg">4. The Chairman's Report</div>
-          <div className="text-slate-500 text-sm max-w-[250px] text-center mt-2 font-light">The Chairman synthesizes the debate and your defense into an actionable Pre-Mortem PDF.</div>
+          <div className="text-white font-medium text-lg">4. The {mode === 'vc' ? "Lead Partner's" : "Chairman's"} Report</div>
+          <div className="text-slate-500 text-sm max-w-[250px] text-center mt-2 font-light">The {mode === 'vc' ? "Lead Partner" : "Chairman"} synthesizes the debate and your defense into an actionable Pre-Mortem PDF.</div>
         </motion.div>
 
       </div>

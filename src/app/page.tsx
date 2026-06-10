@@ -117,6 +117,7 @@ function CritiqueStreamerCard({ pitch, config, persona, onComplete }: { pitch: s
 }
 
 function CrossExamineStreamerCard({ pitch, config, persona, critiques, onComplete }: { pitch: string, config: any, persona: Persona, critiques: Critique[], onComplete: (cx: CrossExamination) => void }) {
+  const mode = config.mode || 'vc';
   const { object, submit, isLoading } = useObject({
     api: '/api/boardroom',
     schema: CrossExaminationSchema,
@@ -148,7 +149,7 @@ function CrossExamineStreamerCard({ pitch, config, persona, critiques, onComplet
       </div>
       <div className="p-6 flex-grow flex flex-col">
         <p className="text-sm text-slate-300 leading-relaxed font-light min-h-[60px]">
-          {object?.rebuttal ? `"${object.rebuttal}"` : <span className="animate-pulse text-red-400/50">Cross-examining board members...</span>}
+          {object?.rebuttal ? `"${object.rebuttal}"` : <span className="animate-pulse text-red-400/50">Cross-examining {mode === 'vc' ? 'VC partners' : 'board members'}...</span>}
         </p>
       </div>
     </div>
@@ -156,6 +157,7 @@ function CrossExamineStreamerCard({ pitch, config, persona, critiques, onComplet
 }
 
 function SynthesisStreamer({ pitch, config, personas, critiques, crossExaminations, userRebuttal, onReset }: { pitch: string, config: any, personas: Persona[], critiques: Critique[], crossExaminations: CrossExamination[], userRebuttal: string, onReset: () => void }) {
+  const mode = config.mode || 'vc';
   const containerRef = useRef<HTMLDivElement>(null);
   const { object, submit, isLoading } = useObject({
     api: '/api/boardroom',
@@ -170,7 +172,7 @@ function SynthesisStreamer({ pitch, config, personas, critiques, crossExaminatio
     const pdfWidth = pdf.internal.pageSize.getWidth();
     const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
     pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-    pdf.save('boardroom-premortem.pdf');
+    pdf.save(`${mode === 'vc' ? 'agenticvc' : 'boardroom'}-premortem.pdf`);
   };
 
   useEffect(() => {
@@ -194,7 +196,7 @@ function SynthesisStreamer({ pitch, config, personas, critiques, crossExaminatio
         </div>
 
         <div className="lg:col-span-3 rounded-3xl border border-white/10 bg-black p-8 flex flex-col justify-center relative">
-          <h3 className="font-serif text-2xl text-white mb-4">Chairman's Verdict</h3>
+          <h3 className="font-serif text-2xl text-white mb-4">{mode === 'vc' ? "Lead Partner's Verdict" : "Chairman's Verdict"}</h3>
           <p className="text-slate-400 text-lg leading-relaxed font-light">
             {object?.summary || <span className="animate-pulse">Synthesizing internal debate and user defense...</span>}
           </p>
@@ -289,12 +291,13 @@ function SynthesisStreamer({ pitch, config, personas, critiques, crossExaminatio
 
 type Status = 'idle' | 'recruiting' | 'deliberating' | 'crossExamining' | 'userRebuttal' | 'compiling' | 'done';
 
-export default function BoardroomPage() {
+export default function AgenticVCPage() {
   const [pitch, setPitch] = useState('');
   const [provider, setProvider] = useState<ProviderType>('google');
   const [model, setModel] = useState('gemini-2.5-pro');
   const [apiKey, setApiKey] = useState('');
   const [tavilyApiKey, setTavilyApiKey] = useState('');
+  const [mode, setMode] = useState<'vc' | 'board'>('vc');
 
   const [status, setStatus] = useState<Status>('idle');
   const [personas, setPersonas] = useState<Persona[]>([]);
@@ -408,7 +411,7 @@ export default function BoardroomPage() {
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center space-x-2">
             <Layers className="w-5 h-5 text-white/80" />
-            <span className="font-serif font-bold text-lg tracking-tight text-white">Boardroom</span>
+            <span className="font-serif font-bold text-lg tracking-tight text-white">AgenticVC</span>
           </div>
           <div className="flex items-center space-x-6">
             {/* Token Counter */}
@@ -505,6 +508,18 @@ export default function BoardroomPage() {
                     </AccordionTrigger>
                     <AccordionContent className="px-4 pb-4 space-y-4 pt-2">
                       <div className="space-y-2">
+                        <Label className="text-slate-500 text-[10px] uppercase tracking-widest">Simulation Mode</Label>
+                        <Select value={mode} onValueChange={(val) => setMode(val as 'vc' | 'board')}>
+                          <SelectTrigger className="bg-black border-white/10 text-slate-300 h-9 rounded-lg">
+                            <SelectValue placeholder="Select mode" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-[#0A0A0A] border-white/10 text-slate-300">
+                            <SelectItem value="vc">Investment Committee (VC)</SelectItem>
+                            <SelectItem value="board">Board of Directors</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
                         <Label className="text-slate-500 text-[10px] uppercase tracking-widest">Provider</Label>
                         <Select value={provider} onValueChange={(val) => { if (val) setProvider(val as ProviderType); }}>
                           <SelectTrigger className="bg-black border-white/10 text-slate-300 h-9 rounded-lg">
@@ -552,7 +567,7 @@ export default function BoardroomPage() {
             </div>
             
             {/* How It Works Diagram */}
-            <HowItWorksDiagram />
+            <HowItWorksDiagram mode={mode} />
           </div>
         )}
 
@@ -560,7 +575,7 @@ export default function BoardroomPage() {
         {status === 'recruiting' && (
           <div className="flex-1 flex flex-col items-center justify-center space-y-12 animate-in fade-in duration-500 w-full max-w-4xl mx-auto">
             <h2 className="text-2xl font-serif text-white animate-pulse">Initializing neural pathways...</h2>
-            <PersonasStreamer pitch={pitch} config={{provider, model, apiKey, tavilyApiKey}} onComplete={handlePersonasComplete} />
+            <PersonasStreamer pitch={pitch} config={{provider, model, apiKey, tavilyApiKey, mode}} onComplete={handlePersonasComplete} />
           </div>
         )}
 
@@ -569,16 +584,16 @@ export default function BoardroomPage() {
           <div className="flex-1 flex flex-col space-y-12 animate-in fade-in duration-500 w-full max-w-5xl mx-auto">
             <h2 className="text-2xl font-serif text-white text-center animate-pulse">
               {status === 'deliberating' && "Cross-examining logical structures..."}
-              {status === 'crossExamining' && "Internal Board Debate..."}
-              {status === 'userRebuttal' && "Board awaits your response..."}
+              {status === 'crossExamining' && (mode === 'vc' ? "Investment Committee Debate..." : "Internal Board Debate...")}
+              {status === 'userRebuttal' && (mode === 'vc' ? "The Partners await your response..." : "The Board awaits your response...")}
             </h2>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
               {personas.map((persona, idx) => {
                 if (status === 'deliberating') {
-                  return <CritiqueStreamerCard key={`crit-${idx}`} pitch={pitch} config={{provider, model, apiKey, tavilyApiKey}} persona={persona} onComplete={handleCritiqueComplete} />
+                  return <CritiqueStreamerCard key={`crit-${idx}`} pitch={pitch} config={{provider, model, apiKey, tavilyApiKey, mode}} persona={persona} onComplete={handleCritiqueComplete} />
                 } else {
-                  return <CrossExamineStreamerCard key={`cx-${idx}`} pitch={pitch} config={{provider, model, apiKey, tavilyApiKey}} persona={persona} critiques={critiques} onComplete={handleCrossExaminationComplete} />
+                  return <CrossExamineStreamerCard key={`cx-${idx}`} pitch={pitch} config={{provider, model, apiKey, tavilyApiKey, mode}} persona={persona} critiques={critiques} onComplete={handleCrossExaminationComplete} />
                 }
               })}
             </div>
@@ -591,7 +606,9 @@ export default function BoardroomPage() {
                   <h3 className="font-serif text-2xl text-white">Take the Stand</h3>
                 </div>
                 <p className="text-slate-400 mb-6 font-light">
-                  The board has torn apart your logic. Before the Chairman delivers the final verdict, you have one chance to defend your pitch or clarify assumptions.
+                  {mode === 'vc' 
+                    ? "The Investment Committee has torn apart your logic. Before the Lead Partner delivers the final verdict, you have one chance to defend your pitch or clarify assumptions."
+                    : "The Board has torn apart your logic. Before the Chairman delivers the final verdict, you have one chance to defend your pitch or clarify assumptions."}
                 </p>
                 <Textarea 
                   className="min-h-[120px] bg-black/50 border-white/10 text-white rounded-xl p-4 mb-6 focus-visible:ring-white/20"
@@ -604,7 +621,7 @@ export default function BoardroomPage() {
                     Skip Defense
                   </Button>
                   <Button className="bg-white text-black hover:bg-slate-200 px-8 rounded-full font-semibold" onClick={submitDefense}>
-                    Submit to Chairman
+                    {mode === 'vc' ? "Submit to Lead Partner" : "Submit to Chairman"}
                   </Button>
                 </div>
               </div>
@@ -620,7 +637,7 @@ export default function BoardroomPage() {
             )}
             <SynthesisStreamer 
               pitch={pitch} 
-              config={{provider, model, apiKey, tavilyApiKey}} 
+              config={{provider, model, apiKey, tavilyApiKey, mode}} 
               personas={personas} 
               critiques={critiques} 
               crossExaminations={crossExaminations}

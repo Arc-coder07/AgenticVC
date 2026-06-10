@@ -1,36 +1,50 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AgenticVC
 
-## Getting Started
+<div align="center">
+  <img src="./public/screenshot.png" alt="AgenticVC Screenshot" width="800"/>
+</div>
 
-First, run the development server:
+**Stress-test your logic.**
 
+AgenticVC is an autonomous multi-agent debate system designed to tear apart your business pitches and system architectures to find fatal flaws before you launch. 
+
+Whether you want to face a ruthless **Investment Committee** or a critical **Board of Directors**, AgenticVC will recruit specialized AI personas to scrutinize your ideas, debate among themselves, and deliver an actionable pre-mortem report.
+
+## 🚀 Features
+
+- **Adversarial AI Nodes**: Submit your pitch, and the system dynamically recruits 3 expert personas (e.g., Cynical CFO, Security Auditor, Go-to-Market Skeptic) tailored to your specific industry and context.
+- **Cross-Examination Loop**: The personas don't just critique your idea—they argue with each other, exposing hidden logical gaps.
+- **Dual Simulation Modes**: Toggle between "Investment Committee (VC)" mode and "Board of Directors" mode to change the context and severity of the stress test.
+- **Interactive Defense**: You get one chance to take the stand and defend your logic before the final verdict is delivered.
+- **Pre-Mortem PDF Export**: The Lead Partner (or Chairman) synthesizes the debate into a downloadable, actionable PDF report.
+
+## 🛠 Tech Stack
+
+- **Framework**: [Next.js](https://nextjs.org/) (App Router)
+- **Styling**: Tailwind CSS & [shadcn/ui](https://ui.shadcn.com/)
+- **AI Integration**: [Vercel AI SDK](https://sdk.vercel.ai/docs) (Supports Gemini, OpenRouter, Groq)
+- **Search**: [Tavily API](https://tavily.com/) (for live market context)
+- **PDF Generation**: html2canvas & jsPDF
+
+## 💻 Getting Started
+
+### 1. Install Dependencies
 ```bash
-npm run dev
+npm install
 # or
-yarn dev
+yarn install
 # or
-pnpm dev
-# or
-bun dev
+pnpm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 2. Run the Development Server
+```bash
+npm run dev
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 3. Usage
+Open [http://localhost:3000](http://localhost:3000) with your browser.
+Expand the **API Configuration** accordion to select your AI Provider, enter your API Key, and toggle between VC/Board modes.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 🤝 Contributing
+Contributions, issues, and feature requests are welcome! Feel free to check the issues page.
