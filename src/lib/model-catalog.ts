@@ -14,7 +14,6 @@ export type ProviderInfo = {
   label: string;
   icon: string; // Lucide icon name or emoji
   requiresApiKey: boolean;
-  apiKeyPrefix?: string; // for format validation
   apiKeyPlaceholder?: string;
   description?: string;
   models: ModelInfo[];
@@ -26,7 +25,6 @@ export const PROVIDER_CATALOG: ProviderInfo[] = [
     label: 'Google Gemini',
     icon: '✦',
     requiresApiKey: true,
-    apiKeyPrefix: 'AIza',
     apiKeyPlaceholder: 'AIza••••••••••••',
     description: 'Google AI Studio',
     models: [
@@ -44,7 +42,6 @@ export const PROVIDER_CATALOG: ProviderInfo[] = [
     label: 'Groq',
     icon: '⚡',
     requiresApiKey: true,
-    apiKeyPrefix: 'gsk_',
     apiKeyPlaceholder: 'gsk_••••••••••••',
     description: 'Ultra-fast inference',
     models: [
@@ -60,7 +57,6 @@ export const PROVIDER_CATALOG: ProviderInfo[] = [
     label: 'OpenRouter',
     icon: '🔀',
     requiresApiKey: true,
-    apiKeyPrefix: 'sk-or-',
     apiKeyPlaceholder: 'sk-or-••••••••••••',
     description: 'Multi-provider gateway',
     models: [

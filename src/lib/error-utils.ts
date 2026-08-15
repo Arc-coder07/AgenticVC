@@ -113,19 +113,5 @@ export function validateApiKeyFormat(provider: ProviderType, key: string): KeyVa
     return { valid: false, hint: 'API key is required' };
   }
 
-  const trimmed = key.trim();
-
-  const providerInfo = getProviderInfo(provider);
-  if (providerInfo?.apiKeyPrefix && !trimmed.startsWith(providerInfo.apiKeyPrefix)) {
-    return {
-      valid: false,
-      hint: `${providerInfo.label} keys typically start with "${providerInfo.apiKeyPrefix}"`,
-    };
-  }
-
-  if (trimmed.length < 10) {
-    return { valid: false, hint: 'API key seems too short' };
-  }
-
   return { valid: true };
 }
