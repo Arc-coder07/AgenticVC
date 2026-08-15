@@ -6,23 +6,96 @@ import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { ShieldAlert, CheckCircle, Flame, Layers, Settings2, Swords, MessageSquareWarning, FileUp, Loader2, XCircle, Cpu } from 'lucide-react';
+import { ShieldAlert, CheckCircle, Flame, Layers, Swords, MessageSquareWarning, FileUp, Loader2, XCircle, Cpu, Eye, EyeOff, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Wifi, WifiOff } from 'lucide-react';
 
 import { ProviderType } from '@/lib/llm-client';
+import { PROVIDER_CATALOG, getModelsForProvider, getDefaultModel, getModelInfo } from '@/lib/model-catalog';
+import { validateApiKeyFormat } from '@/lib/error-utils';
+import { useTokenTracker } from '@/lib/token-tracker';
 import { Persona, Critique, CrossExamination, FinalReport, PersonaSchema, CritiqueSchema, CrossExaminationSchema, FinalReportSchema } from '@/lib/schemas';
 import { experimental_useObject as useObject } from '@ai-sdk/react';
 import { z } from 'zod';
 import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useCallback } from 'react';
 import HowItWorksDiagram from '@/components/ui/HowItWorksDiagram';
+
+// --- ERROR BANNER ---
+
+function ErrorBanner({ message, retryable, onRetry, onDismiss }: { message: string; retryable?: boolean; onRetry?: () => void; onDismiss: () => void }) {
+  return (
+    <div className="w-full p-4 bg-red-950/40 border border-red-500/30 rounded-2xl flex items-start gap-4 animate-in fade-in slide-in-from-top-4 duration-300">
+      <AlertTriangle className="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <p className="text-sm text-red-300 leading-relaxed">{message}</p>
+      </div>
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {retryable && onRetry && (
+          <Button variant="ghost" size="sm" onClick={onRetry} className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-8 px-3">
+            <RefreshCw className="w-3 h-3 mr-1.5" /> Retry
+          </Button>
+        )}
+        <Button variant="ghost" size="sm" onClick={onDismiss} className="text-red-400 hover:text-red-300 hover:bg-red-500/10 h-7 w-7 p-0">
+          <XCircle className="w-4 h-4" />
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+// --- TOKEN DISPLAY ---
+
+function TokenDisplay({ totalPromptTokens, totalCompletionTokens, totalTokens, stages }: { totalPromptTokens: number; totalCompletionTokens: number; totalTokens: number; stages: any[] }) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (totalTokens === 0) {
+    return (
+      <div className="hidden md:flex items-center space-x-2 text-[10px] uppercase tracking-widest text-slate-500 font-medium">
+        <Cpu className="w-3 h-3" />
+        <span>Tokens: --</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="hidden md:flex items-center space-x-2 text-[10px] uppercase tracking-widest text-emerald-400/80 font-medium hover:text-emerald-300 transition-colors"
+      >
+        <Cpu className="w-3 h-3" />
+        <span>{totalPromptTokens.toLocaleString()} in / {totalCompletionTokens.toLocaleString()} out</span>
+        <span className="text-slate-500">({totalTokens.toLocaleString()})</span>
+        {stages.length > 0 && (expanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />)}
+      </button>
+
+      {expanded && stages.length > 0 && (
+        <div className="absolute right-0 top-full mt-2 w-72 bg-[#0A0A0A] border border-white/10 rounded-xl p-3 shadow-2xl z-50 animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="text-[10px] uppercase tracking-widest text-slate-500 font-medium mb-2">Token Breakdown</div>
+          <div className="space-y-1.5">
+            {stages.map((s, i) => (
+              <div key={i} className="flex items-center justify-between text-xs">
+                <span className="text-slate-400 truncate mr-2">{s.stage}</span>
+                <span className="text-slate-300 font-mono tabular-nums">{s.totalTokens.toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 pt-2 border-t border-white/5 flex items-center justify-between text-xs font-medium">
+            <span className="text-white">Total</span>
+            <span className="text-emerald-400 font-mono tabular-nums">{totalTokens.toLocaleString()}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 // --- STAGE COMPONENTS ---
 
-function PersonasStreamer({ pitch, config, onComplete }: { pitch: string, config: any, onComplete: (personas: Persona[]) => void }) {
-  const { object, submit, isLoading } = useObject({
+function PersonasStreamer({ pitch, config, onComplete, onError }: { pitch: string, config: any, onComplete: (personas: Persona[]) => void, onError: (msg: string) => void }) {
+  const { object, submit, isLoading, error } = useObject({
     api: '/api/boardroom',
     schema: z.object({ 
       marketAnalysis: z.string().optional(),
@@ -33,6 +106,13 @@ function PersonasStreamer({ pitch, config, onComplete }: { pitch: string, config
   useEffect(() => {
     submit({ action: 'personas', pitch, config });
   }, [pitch, config, submit]);
+
+  useEffect(() => {
+    if (error) {
+      const msg = error.message || 'Failed to generate personas. Please check your configuration.';
+      onError(msg);
+    }
+  }, [error, onError]);
 
   useEffect(() => {
     if (!isLoading && object?.personas?.length === 3) {
@@ -71,8 +151,8 @@ function PersonasStreamer({ pitch, config, onComplete }: { pitch: string, config
   );
 }
 
-function CritiqueStreamerCard({ pitch, config, persona, onComplete }: { pitch: string, config: any, persona: Persona, onComplete: (critique: Critique) => void }) {
-  const { object, submit, isLoading } = useObject({
+function CritiqueStreamerCard({ pitch, config, persona, onComplete, onError }: { pitch: string, config: any, persona: Persona, onComplete: (critique: Critique) => void, onError: (msg: string) => void }) {
+  const { object, submit, isLoading, error } = useObject({
     api: '/api/boardroom',
     schema: CritiqueSchema,
   });
@@ -80,6 +160,12 @@ function CritiqueStreamerCard({ pitch, config, persona, onComplete }: { pitch: s
   useEffect(() => {
     submit({ action: 'critique', pitch, config, persona });
   }, [pitch, config, persona, submit]);
+
+  useEffect(() => {
+    if (error) {
+      onError(`Critique from ${persona.name} failed: ${error.message || 'Unknown error'}`);
+    }
+  }, [error, onError, persona.name]);
 
   useEffect(() => {
     if (!isLoading && object?.critique && object?.biggestRisk) {
@@ -116,9 +202,9 @@ function CritiqueStreamerCard({ pitch, config, persona, onComplete }: { pitch: s
   );
 }
 
-function CrossExamineStreamerCard({ pitch, config, persona, critiques, onComplete }: { pitch: string, config: any, persona: Persona, critiques: Critique[], onComplete: (cx: CrossExamination) => void }) {
+function CrossExamineStreamerCard({ pitch, config, persona, critiques, onComplete, onError }: { pitch: string, config: any, persona: Persona, critiques: Critique[], onComplete: (cx: CrossExamination) => void, onError: (msg: string) => void }) {
   const mode = config.mode || 'vc';
-  const { object, submit, isLoading } = useObject({
+  const { object, submit, isLoading, error } = useObject({
     api: '/api/boardroom',
     schema: CrossExaminationSchema,
   });
@@ -126,6 +212,12 @@ function CrossExamineStreamerCard({ pitch, config, persona, critiques, onComplet
   useEffect(() => {
     submit({ action: 'cross-examine', pitch, config, persona, critiques });
   }, [pitch, config, persona, critiques, submit]);
+
+  useEffect(() => {
+    if (error) {
+      onError(`Cross-examination from ${persona.name} failed: ${error.message || 'Unknown error'}`);
+    }
+  }, [error, onError, persona.name]);
 
   useEffect(() => {
     if (!isLoading && object?.rebuttal) {
@@ -156,13 +248,19 @@ function CrossExamineStreamerCard({ pitch, config, persona, critiques, onComplet
   );
 }
 
-function SynthesisStreamer({ pitch, config, personas, critiques, crossExaminations, userRebuttal, onReset }: { pitch: string, config: any, personas: Persona[], critiques: Critique[], crossExaminations: CrossExamination[], userRebuttal: string, onReset: () => void }) {
+function SynthesisStreamer({ pitch, config, personas, critiques, crossExaminations, userRebuttal, onReset, onError }: { pitch: string, config: any, personas: Persona[], critiques: Critique[], crossExaminations: CrossExamination[], userRebuttal: string, onReset: () => void, onError: (msg: string) => void }) {
   const mode = config.mode || 'vc';
   const containerRef = useRef<HTMLDivElement>(null);
-  const { object, submit, isLoading } = useObject({
+  const { object, submit, isLoading, error } = useObject({
     api: '/api/boardroom',
     schema: FinalReportSchema,
   });
+
+  useEffect(() => {
+    if (error) {
+      onError(`Synthesis failed: ${error.message || 'Unknown error'}`);
+    }
+  }, [error, onError]);
 
   const exportPDF = async () => {
     if (!containerRef.current) return;
@@ -287,6 +385,280 @@ function SynthesisStreamer({ pitch, config, personas, critiques, crossExaminatio
   );
 }
 
+// --- COMMAND CENTER ---
+
+function CommandCenter({ 
+  provider, setProvider, 
+  model, setModel,
+  apiKey, setApiKey, 
+  tavilyApiKey, setTavilyApiKey,
+  mode, setMode,
+  ollamaStatus
+}: {
+  provider: ProviderType; setProvider: (p: ProviderType) => void;
+  model: string; setModel: (m: string) => void;
+  apiKey: string; setApiKey: (k: string) => void;
+  tavilyApiKey: string; setTavilyApiKey: (k: string) => void;
+  mode: 'vc' | 'board'; setMode: (m: 'vc' | 'board') => void;
+  ollamaStatus: 'checking' | 'online' | 'offline';
+}) {
+  const [showApiKey, setShowApiKey] = useState(false);
+  const [showTavilyKey, setShowTavilyKey] = useState(false);
+  const [showTavily, setShowTavily] = useState(false);
+
+  const providerInfo = PROVIDER_CATALOG.find(p => p.id === provider);
+  const models = getModelsForProvider(provider);
+  const currentModelInfo = getModelInfo(provider, model);
+  const keyValidation = validateApiKeyFormat(provider, apiKey);
+
+  // Custom model state
+  const [useCustomModel, setUseCustomModel] = useState(false);
+  const [customModelId, setCustomModelId] = useState('');
+
+  const effectiveModel = useCustomModel ? customModelId : model;
+
+  return (
+    <div className="w-full space-y-5">
+      {/* Mode Toggle */}
+      <div className="flex items-center justify-center">
+        <div className="inline-flex bg-white/[0.04] border border-white/10 rounded-full p-1">
+          <button
+            onClick={() => setMode('vc')}
+            className={`px-5 py-2 rounded-full text-xs font-semibold uppercase tracking-widest transition-all duration-300 ${
+              mode === 'vc' 
+                ? 'bg-white text-black shadow-lg' 
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            VC Mode
+          </button>
+          <button
+            onClick={() => setMode('board')}
+            className={`px-5 py-2 rounded-full text-xs font-semibold uppercase tracking-widest transition-all duration-300 ${
+              mode === 'board' 
+                ? 'bg-white text-black shadow-lg' 
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            Board Mode
+          </button>
+        </div>
+      </div>
+
+      {/* Provider Cards */}
+      <div>
+        <Label className="text-slate-500 text-[10px] uppercase tracking-widest block mb-3">Provider</Label>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {PROVIDER_CATALOG.map(p => (
+            <button
+              key={p.id}
+              onClick={() => {
+                setProvider(p.id);
+                setModel(getDefaultModel(p.id));
+                setUseCustomModel(false);
+                setCustomModelId('');
+              }}
+              className={`relative flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all duration-300 group ${
+                provider === p.id
+                  ? 'border-white/30 bg-white/[0.06] shadow-[0_0_20px_rgba(255,255,255,0.05)]'
+                  : 'border-white/[0.06] bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.04]'
+              }`}
+            >
+              <span className="text-2xl">{p.icon}</span>
+              <span className={`text-xs font-semibold tracking-wide ${provider === p.id ? 'text-white' : 'text-slate-400'}`}>
+                {p.label}
+              </span>
+              {p.id === 'ollama' && (
+                <span className={`absolute top-2 right-2 flex items-center gap-1 text-[9px] font-medium ${
+                  ollamaStatus === 'online' ? 'text-emerald-400' : ollamaStatus === 'offline' ? 'text-red-400' : 'text-slate-500'
+                }`}>
+                  {ollamaStatus === 'online' ? <Wifi className="w-2.5 h-2.5" /> : ollamaStatus === 'offline' ? <WifiOff className="w-2.5 h-2.5" /> : <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                </span>
+              )}
+              {!p.requiresApiKey && (
+                <span className="text-[9px] text-emerald-400/70 font-medium">No key needed</span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Model Selector */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-2">
+          <Label className="text-slate-500 text-[10px] uppercase tracking-widest">Model</Label>
+          {!useCustomModel ? (
+            <Select value={model} onValueChange={(val) => {
+              if (!val) return;
+              if (val === '__custom__') {
+                setUseCustomModel(true);
+              } else {
+                setModel(val);
+              }
+            }}>
+              <SelectTrigger className="bg-black border-white/10 text-slate-300 h-10 rounded-xl">
+                <SelectValue placeholder="Select model" />
+              </SelectTrigger>
+              <SelectContent className="bg-[#0A0A0A] border-white/10 text-slate-300 max-h-[300px]">
+                {models.map(m => (
+                  <SelectItem key={m.id} value={m.id} className="flex items-center">
+                    <div className="flex items-center gap-2 w-full">
+                      <span className={m.deprecated ? 'text-slate-500 line-through' : ''}>{m.label}</span>
+                      {m.deprecated && (
+                        <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-medium ml-1">
+                          ⚠ Deprecated
+                        </span>
+                      )}
+                    </div>
+                  </SelectItem>
+                ))}
+                <SelectItem value="__custom__" className="border-t border-white/5">
+                  <span className="text-slate-400 italic">Custom model ID...</span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          ) : (
+            <div className="flex gap-2">
+              <Input
+                value={customModelId}
+                onChange={(e) => {
+                  setCustomModelId(e.target.value);
+                  setModel(e.target.value);
+                }}
+                placeholder="e.g. my-custom-model"
+                className="bg-black border-white/10 text-slate-300 h-10 rounded-xl flex-1"
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setUseCustomModel(false);
+                  setModel(getDefaultModel(provider));
+                }}
+                className="text-slate-400 hover:text-white h-10 px-3"
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
+          {/* Deprecation warning */}
+          {currentModelInfo?.deprecated && !useCustomModel && (
+            <div className="flex items-start gap-2 p-2.5 bg-amber-950/30 border border-amber-500/20 rounded-xl">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-400 mt-0.5 flex-shrink-0" />
+              <p className="text-[11px] text-amber-300 leading-relaxed">
+                {currentModelInfo.deprecationNote || 'This model is deprecated. Consider switching to a newer version.'}
+              </p>
+            </div>
+          )}
+          {/* Model description */}
+          {currentModelInfo && !currentModelInfo.deprecated && !useCustomModel && (
+            <p className="text-[10px] text-slate-500">{currentModelInfo.description}{currentModelInfo.context ? ` · ${(currentModelInfo.context / 1000).toLocaleString()}K context` : ''}</p>
+          )}
+        </div>
+
+        {/* API Key */}
+        <div className="space-y-2">
+          {providerInfo?.requiresApiKey ? (
+            <>
+              <Label className="text-slate-500 text-[10px] uppercase tracking-widest">API Key</Label>
+              <div className="relative">
+                <Input 
+                  type={showApiKey ? 'text' : 'password'}
+                  value={apiKey} 
+                  onChange={(e) => setApiKey(e.target.value)} 
+                  placeholder={providerInfo?.apiKeyPlaceholder || '••••••••••••'}
+                  className={`bg-black border-white/10 text-slate-300 h-10 rounded-xl pr-20 ${
+                    apiKey && !keyValidation.valid ? 'border-amber-500/40' : apiKey && keyValidation.valid ? 'border-emerald-500/30' : ''
+                  }`}
+                />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  {apiKey && (
+                    <span className={`w-2 h-2 rounded-full ${keyValidation.valid ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                  )}
+                  <button
+                    onClick={() => setShowApiKey(!showApiKey)}
+                    className="p-1.5 text-slate-500 hover:text-white transition-colors"
+                  >
+                    {showApiKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                </div>
+              </div>
+              {apiKey && !keyValidation.valid && keyValidation.hint && (
+                <p className="text-[10px] text-amber-400">{keyValidation.hint}</p>
+              )}
+            </>
+          ) : (
+            <div className="flex flex-col justify-center h-full">
+              <div className={`flex items-center gap-3 p-3 rounded-xl border ${
+                ollamaStatus === 'online' 
+                  ? 'border-emerald-500/20 bg-emerald-950/20' 
+                  : ollamaStatus === 'offline'
+                  ? 'border-red-500/20 bg-red-950/20'
+                  : 'border-white/5 bg-white/[0.02]'
+              }`}>
+                {ollamaStatus === 'online' ? (
+                  <>
+                    <Wifi className="w-4 h-4 text-emerald-400" />
+                    <div>
+                      <p className="text-xs text-emerald-300 font-medium">Ollama Connected</p>
+                      <p className="text-[10px] text-emerald-400/60">localhost:11434</p>
+                    </div>
+                  </>
+                ) : ollamaStatus === 'offline' ? (
+                  <>
+                    <WifiOff className="w-4 h-4 text-red-400" />
+                    <div>
+                      <p className="text-xs text-red-300 font-medium">Ollama Not Running</p>
+                      <p className="text-[10px] text-red-400/60">Run: ollama serve</p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <Loader2 className="w-4 h-4 text-slate-400 animate-spin" />
+                    <p className="text-xs text-slate-400">Checking connection...</p>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Tavily (Optional, collapsible) */}
+      <div>
+        <button 
+          onClick={() => setShowTavily(!showTavily)}
+          className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-slate-500 hover:text-slate-300 transition-colors font-medium"
+        >
+          {showTavily ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          Tavily Web Search (Optional)
+        </button>
+        {showTavily && (
+          <div className="mt-3 space-y-2 animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="relative">
+              <Input 
+                type={showTavilyKey ? 'text' : 'password'}
+                value={tavilyApiKey} 
+                onChange={(e) => setTavilyApiKey(e.target.value)} 
+                placeholder="tvly-••••••••••••"
+                className="bg-black border-white/10 text-slate-300 h-9 rounded-xl pr-10"
+              />
+              <button
+                onClick={() => setShowTavilyKey(!showTavilyKey)}
+                className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-slate-500 hover:text-white transition-colors"
+              >
+                {showTavilyKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+              </button>
+            </div>
+            <p className="text-[10px] text-slate-500">Enables real-time market intelligence during persona generation</p>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
 // --- MAIN PAGE ---
 
 type Status = 'idle' | 'recruiting' | 'deliberating' | 'crossExamining' | 'userRebuttal' | 'compiling' | 'done';
@@ -305,27 +677,118 @@ export default function AgenticVCPage() {
   const [crossExaminations, setCrossExaminations] = useState<CrossExamination[]>([]);
   const [userRebuttalText, setUserRebuttalText] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
+  const [errorRetryable, setErrorRetryable] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+
+  // Token tracking
+  const tokenTracker = useTokenTracker();
+
+  // Check Ollama connectivity
+  useEffect(() => {
+    if (provider !== 'ollama') return;
+    setOllamaStatus('checking');
+    
+    const checkOllama = async () => {
+      try {
+        const res = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(3000) });
+        if (res.ok) {
+          setOllamaStatus('online');
+        } else {
+          setOllamaStatus('offline');
+        }
+      } catch {
+        setOllamaStatus('offline');
+      }
+    };
+
+    checkOllama();
+    const interval = setInterval(checkOllama, 15000); // Re-check every 15s
+    return () => clearInterval(interval);
+  }, [provider]);
+
+  const handleError = useCallback((msg: string) => {
+    // Try to parse JSON error from streaming response
+    let errorMessage = msg;
+    let retryable = true;
+    
+    try {
+      // The useObject error often wraps the JSON error
+      const jsonMatch = msg.match(/\{.*"error".*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        errorMessage = parsed.error || msg;
+        retryable = parsed.retryable !== false;
+      }
+    } catch {
+      // Use the raw message
+    }
+
+    setErrorMsg(errorMessage);
+    setErrorRetryable(retryable);
+  }, []);
 
   const handleStart = () => {
-    if (!pitch || !apiKey || !model) {
-      setErrorMsg('Please provide a pitch, API key, and model.');
+    // Validate pitch
+    if (!pitch.trim()) {
+      setErrorMsg('Please provide a pitch or upload a PDF deck.');
+      setErrorRetryable(false);
       return;
     }
+
+    // Validate API key (unless Ollama)
+    if (provider !== 'ollama') {
+      if (!apiKey.trim()) {
+        setErrorMsg(`API key is required for ${PROVIDER_CATALOG.find(p => p.id === provider)?.label || provider}.`);
+        setErrorRetryable(false);
+        return;
+      }
+      const validation = validateApiKeyFormat(provider, apiKey);
+      if (!validation.valid) {
+        setErrorMsg(validation.hint || 'Invalid API key format.');
+        setErrorRetryable(false);
+        return;
+      }
+    }
+
+    // Validate Ollama connection
+    if (provider === 'ollama' && ollamaStatus === 'offline') {
+      setErrorMsg('Ollama is not running. Start it with: ollama serve');
+      setErrorRetryable(true);
+      return;
+    }
+
+    // Validate model
+    if (!model.trim()) {
+      setErrorMsg('Please select a model.');
+      setErrorRetryable(false);
+      return;
+    }
+
+    // Check for deprecated model
+    const modelInfo = getModelInfo(provider, model);
+    if (modelInfo?.deprecated) {
+      // Allow but warn — don't block
+      console.warn(`Using deprecated model: ${model}`);
+    }
+
     setErrorMsg('');
+    setErrorRetryable(false);
     setPersonas([]);
     setCritiques([]);
     setCrossExaminations([]);
     setUserRebuttalText('');
+    tokenTracker.reset();
     setStatus('recruiting');
   };
 
-  const handlePersonasComplete = (generatedPersonas: Persona[]) => {
+  const handlePersonasComplete = useCallback((generatedPersonas: Persona[]) => {
     setPersonas(generatedPersonas);
+    tokenTracker.addUsage('Persona Generation', 0, 0); // Placeholder — real counts logged server-side
     setStatus('deliberating');
-  };
+  }, [tokenTracker]);
 
-  const handleCritiqueComplete = (critique: Critique) => {
+  const handleCritiqueComplete = useCallback((critique: Critique) => {
     setCritiques(prev => {
       const updated = [...prev, critique];
       if (updated.length === 3) {
@@ -333,9 +796,9 @@ export default function AgenticVCPage() {
       }
       return updated;
     });
-  };
+  }, []);
 
-  const handleCrossExaminationComplete = (cx: CrossExamination) => {
+  const handleCrossExaminationComplete = useCallback((cx: CrossExamination) => {
     setCrossExaminations(prev => {
       const updated = [...prev, cx];
       if (updated.length === 3) {
@@ -343,7 +806,7 @@ export default function AgenticVCPage() {
       }
       return updated;
     });
-  };
+  }, []);
 
   const submitDefense = () => {
     setStatus('compiling');
@@ -355,6 +818,11 @@ export default function AgenticVCPage() {
 
     if (file.type !== 'application/pdf') {
       setErrorMsg('Only PDF files are supported.');
+      return;
+    }
+
+    if (file.size > 10 * 1024 * 1024) {
+      setErrorMsg('PDF file must be under 10 MB.');
       return;
     }
 
@@ -371,7 +839,8 @@ export default function AgenticVCPage() {
       });
 
       if (!res.ok) {
-        throw new Error('Failed to parse PDF');
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `Failed to parse PDF (${res.status})`);
       }
 
       const data = await res.json();
@@ -395,13 +864,18 @@ export default function AgenticVCPage() {
     setCritiques([]);
     setCrossExaminations([]);
     setUserRebuttalText('');
+    setErrorMsg('');
   };
 
-  // Approximate tokens: 1 token ≈ 4 characters. We count all data actively held or generated in state.
-  const estimatedTokens = useMemo(() => {
-    const textData = pitch + JSON.stringify(personas) + JSON.stringify(critiques) + JSON.stringify(crossExaminations) + userRebuttalText;
-    return Math.floor(textData.length / 4).toLocaleString();
-  }, [pitch, personas, critiques, crossExaminations, userRebuttalText]);
+  const handleReset = useCallback(() => {
+    setStatus('idle');
+    setPersonas([]);
+    setCritiques([]);
+    setCrossExaminations([]);
+    setUserRebuttalText('');
+    setErrorMsg('');
+    tokenTracker.reset();
+  }, [tokenTracker]);
 
   return (
     <div className="min-h-screen bg-black text-slate-200 selection:bg-white/20 flex flex-col font-sans relative overflow-hidden">
@@ -415,10 +889,7 @@ export default function AgenticVCPage() {
           </div>
           <div className="flex items-center space-x-6">
             {/* Token Counter */}
-            <div className="hidden md:flex items-center space-x-2 text-[10px] uppercase tracking-widest text-slate-500 font-medium">
-              <Cpu className="w-3 h-3" />
-              <span>Tokens: ~{estimatedTokens}</span>
-            </div>
+            <TokenDisplay {...tokenTracker} />
 
             {/* Cancel Button */}
             {status !== 'idle' && status !== 'done' && (
@@ -485,84 +956,33 @@ export default function AgenticVCPage() {
               </div>
 
               {errorMsg && (
-                <div className="p-4 bg-red-950/30 border border-red-500/20 text-red-400 text-sm rounded-xl text-center">
-                  {errorMsg}
-                </div>
+                <ErrorBanner 
+                  message={errorMsg} 
+                  retryable={errorRetryable}
+                  onRetry={errorRetryable ? handleStart : undefined}
+                  onDismiss={() => { setErrorMsg(''); setErrorRetryable(false); }} 
+                />
               )}
 
-              <div className="flex flex-col items-center space-y-6 pt-4">
+              {/* Command Center */}
+              <div className="w-full rounded-2xl border border-white/[0.08] bg-white/[0.02] backdrop-blur-sm p-6 space-y-1">
+                <CommandCenter
+                  provider={provider} setProvider={setProvider}
+                  model={model} setModel={setModel}
+                  apiKey={apiKey} setApiKey={setApiKey}
+                  tavilyApiKey={tavilyApiKey} setTavilyApiKey={setTavilyApiKey}
+                  mode={mode} setMode={setMode}
+                  ollamaStatus={ollamaStatus}
+                />
+              </div>
+
+              <div className="flex flex-col items-center space-y-4 pt-2">
                 <Button 
                   onClick={handleStart} 
                   className="h-14 px-10 rounded-full bg-white text-black hover:bg-slate-200 font-semibold text-lg transition-all shadow-[0_0_20px_rgba(255,255,255,0.1)] hover:shadow-[0_0_30px_rgba(255,255,255,0.2)]"
                 >
                   Initiate Sequence
                 </Button>
-
-                <Accordion className="w-full max-w-sm border-white/10 border rounded-xl bg-black/50 overflow-hidden">
-                  <AccordionItem value="settings" className="border-b-0">
-                    <AccordionTrigger className="px-4 py-3 hover:no-underline hover:bg-white/5 text-sm text-slate-400 data-[state=open]:text-white transition-colors">
-                      <div className="flex items-center space-x-2">
-                        <Settings2 className="w-4 h-4" />
-                        <span>API Configuration</span>
-                      </div>
-                    </AccordionTrigger>
-                    <AccordionContent className="px-4 pb-4 space-y-4 pt-2">
-                      <div className="space-y-2">
-                        <Label className="text-slate-500 text-[10px] uppercase tracking-widest">Simulation Mode</Label>
-                        <Select value={mode} onValueChange={(val) => setMode(val as 'vc' | 'board')}>
-                          <SelectTrigger className="bg-black border-white/10 text-slate-300 h-9 rounded-lg">
-                            <SelectValue placeholder="Select mode" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-[#0A0A0A] border-white/10 text-slate-300">
-                            <SelectItem value="vc">Investment Committee (VC)</SelectItem>
-                            <SelectItem value="board">Board of Directors</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-slate-500 text-[10px] uppercase tracking-widest">Provider</Label>
-                        <Select value={provider} onValueChange={(val) => { if (val) setProvider(val as ProviderType); }}>
-                          <SelectTrigger className="bg-black border-white/10 text-slate-300 h-9 rounded-lg">
-                            <SelectValue placeholder="Select provider" />
-                          </SelectTrigger>
-                          <SelectContent className="bg-[#0A0A0A] border-white/10 text-slate-300">
-                            <SelectItem value="google">Google Gemini</SelectItem>
-                            <SelectItem value="groq">Groq</SelectItem>
-                            <SelectItem value="openrouter">OpenRouter</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-slate-500 text-[10px] uppercase tracking-widest">Model ID</Label>
-                        <Input 
-                          value={model} 
-                          onChange={(e) => setModel(e.target.value)} 
-                          className="bg-black border-white/10 text-slate-300 h-9 rounded-lg focus-visible:ring-white/20"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-slate-500 text-[10px] uppercase tracking-widest">Provider API Key</Label>
-                        <Input 
-                          type="password" 
-                          value={apiKey} 
-                          onChange={(e) => setApiKey(e.target.value)} 
-                          placeholder="••••••••••••"
-                          className="bg-black border-white/10 text-slate-300 h-9 rounded-lg focus-visible:ring-white/20"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-slate-500 text-[10px] uppercase tracking-widest">Tavily API Key (Optional)</Label>
-                        <Input 
-                          type="password" 
-                          value={tavilyApiKey} 
-                          onChange={(e) => setTavilyApiKey(e.target.value)} 
-                          placeholder="tvly-••••••••••••"
-                          className="bg-black border-white/10 text-slate-300 h-9 rounded-lg focus-visible:ring-white/20"
-                        />
-                      </div>
-                    </AccordionContent>
-                  </AccordionItem>
-                </Accordion>
               </div>
             </div>
             
@@ -574,14 +994,30 @@ export default function AgenticVCPage() {
         {/* RECRUITING STATE */}
         {status === 'recruiting' && (
           <div className="flex-1 flex flex-col items-center justify-center space-y-12 animate-in fade-in duration-500 w-full max-w-4xl mx-auto">
+            {errorMsg && (
+              <ErrorBanner 
+                message={errorMsg} 
+                retryable={errorRetryable}
+                onRetry={() => { setErrorMsg(''); handleCancel(); }}
+                onDismiss={() => { setErrorMsg(''); handleCancel(); }} 
+              />
+            )}
             <h2 className="text-2xl font-serif text-white animate-pulse">Initializing neural pathways...</h2>
-            <PersonasStreamer pitch={pitch} config={{provider, model, apiKey, tavilyApiKey, mode}} onComplete={handlePersonasComplete} />
+            <PersonasStreamer pitch={pitch} config={{provider, model, apiKey, tavilyApiKey, mode}} onComplete={handlePersonasComplete} onError={handleError} />
           </div>
         )}
 
         {/* DELIBERATING STATE */}
         {(status === 'deliberating' || status === 'crossExamining' || status === 'userRebuttal') && personas.length === 3 && (
           <div className="flex-1 flex flex-col space-y-12 animate-in fade-in duration-500 w-full max-w-5xl mx-auto">
+            {errorMsg && (
+              <ErrorBanner 
+                message={errorMsg} 
+                retryable={errorRetryable}
+                onRetry={() => { setErrorMsg(''); setErrorRetryable(false); }}
+                onDismiss={() => { setErrorMsg(''); setErrorRetryable(false); }} 
+              />
+            )}
             <h2 className="text-2xl font-serif text-white text-center animate-pulse">
               {status === 'deliberating' && "Cross-examining logical structures..."}
               {status === 'crossExamining' && (mode === 'vc' ? "Investment Committee Debate..." : "Internal Board Debate...")}
@@ -591,9 +1027,9 @@ export default function AgenticVCPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
               {personas.map((persona, idx) => {
                 if (status === 'deliberating') {
-                  return <CritiqueStreamerCard key={`crit-${idx}`} pitch={pitch} config={{provider, model, apiKey, tavilyApiKey, mode}} persona={persona} onComplete={handleCritiqueComplete} />
+                  return <CritiqueStreamerCard key={`crit-${idx}`} pitch={pitch} config={{provider, model, apiKey, tavilyApiKey, mode}} persona={persona} onComplete={handleCritiqueComplete} onError={handleError} />;
                 } else {
-                  return <CrossExamineStreamerCard key={`cx-${idx}`} pitch={pitch} config={{provider, model, apiKey, tavilyApiKey, mode}} persona={persona} critiques={critiques} onComplete={handleCrossExaminationComplete} />
+                  return <CrossExamineStreamerCard key={`cx-${idx}`} pitch={pitch} config={{provider, model, apiKey, tavilyApiKey, mode}} persona={persona} critiques={critiques} onComplete={handleCrossExaminationComplete} onError={handleError} />;
                 }
               })}
             </div>
@@ -632,6 +1068,14 @@ export default function AgenticVCPage() {
         {/* COMPILING & DONE STATE */}
         {(status === 'compiling' || status === 'done') && (
           <div className="flex-1 flex flex-col space-y-12 animate-in fade-in duration-500 w-full">
+            {errorMsg && (
+              <ErrorBanner 
+                message={errorMsg} 
+                retryable={errorRetryable}
+                onRetry={() => { setErrorMsg(''); setErrorRetryable(false); }}
+                onDismiss={() => { setErrorMsg(''); setErrorRetryable(false); }} 
+              />
+            )}
             {status === 'compiling' && (
               <h2 className="text-2xl font-serif text-white animate-pulse text-center mt-8">Synthesizing final risk assessment...</h2>
             )}
@@ -642,13 +1086,8 @@ export default function AgenticVCPage() {
               critiques={critiques} 
               crossExaminations={crossExaminations}
               userRebuttal={userRebuttalText}
-              onReset={() => {
-                setStatus('idle');
-                setPersonas([]);
-                setCritiques([]);
-                setCrossExaminations([]);
-                setUserRebuttalText('');
-              }} 
+              onReset={handleReset}
+              onError={handleError}
             />
           </div>
         )}
