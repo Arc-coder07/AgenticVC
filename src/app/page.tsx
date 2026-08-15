@@ -666,7 +666,7 @@ type Status = 'idle' | 'recruiting' | 'deliberating' | 'crossExamining' | 'userR
 export default function AgenticVCPage() {
   const [pitch, setPitch] = useState('');
   const [provider, setProvider] = useState<ProviderType>('google');
-  const [model, setModel] = useState('gemini-1.5-pro');
+  const [model, setModel] = useState('gemini-3.1-pro-preview');
   const [apiKey, setApiKey] = useState('');
   const [tavilyApiKey, setTavilyApiKey] = useState('');
   const [mode, setMode] = useState<'vc' | 'board'>('vc');
@@ -680,6 +680,7 @@ export default function AgenticVCPage() {
   const [errorRetryable, setErrorRetryable] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [ollamaStatus, setOllamaStatus] = useState<'checking' | 'online' | 'offline'>('checking');
+  const [loadingStepIdx, setLoadingStepIdx] = useState(0);
 
   // Token tracking
   const tokenTracker = useTokenTracker();
@@ -706,6 +707,17 @@ export default function AgenticVCPage() {
     const interval = setInterval(checkOllama, 15000); // Re-check every 15s
     return () => clearInterval(interval);
   }, [provider]);
+
+  useEffect(() => {
+    if (status === 'recruiting') {
+      const interval = setInterval(() => {
+        setLoadingStepIdx(prev => Math.min(prev + 1, 4));
+      }, 1500);
+      return () => clearInterval(interval);
+    } else {
+      setLoadingStepIdx(0);
+    }
+  }, [status]);
 
   const handleError = useCallback((msg: string) => {
     // Try to parse JSON error from streaming response
@@ -1003,7 +1015,15 @@ export default function AgenticVCPage() {
                 onDismiss={() => { setErrorMsg(''); handleCancel(); }} 
               />
             )}
-            <h2 className="text-2xl font-serif text-white animate-pulse">Initializing neural pathways...</h2>
+            <h2 className="text-2xl font-serif text-white animate-pulse">
+              {[
+                "Parsing business architecture...",
+                "Analyzing market context...",
+                "Querying knowledge graph...",
+                "Identifying adversarial vectors...",
+                "Assembling committee personas..."
+              ][loadingStepIdx]}
+            </h2>
             <PersonasStreamer pitch={pitch} config={{provider, model, apiKey, tavilyApiKey, mode}} onComplete={handlePersonasComplete} onError={handleError} />
           </div>
         )}
