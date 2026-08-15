@@ -28,13 +28,10 @@ export const PROVIDER_CATALOG: ProviderInfo[] = [
     apiKeyPlaceholder: 'AIza••••••••••••',
     description: 'Google AI Studio',
     models: [
-      { id: 'gemini-2.5-pro', label: 'Gemini 2.5 Pro', context: 1048576, description: 'Most capable reasoning model' },
-      { id: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash', context: 1048576, description: 'Fast and efficient' },
-      { id: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash', context: 1048576, description: 'Previous gen flash' },
-      { id: 'gemini-2.0-flash-lite', label: 'Gemini 2.0 Flash Lite', context: 1048576, description: 'Lightweight model' },
-      { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', context: 2097152, description: 'Previous gen pro', deprecated: true, deprecationNote: 'Use Gemini 2.5 Pro instead' },
-      { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', context: 1048576, deprecated: true, deprecationNote: 'Use Gemini 2.5 Flash instead' },
-      { id: 'gemini-1.0-pro', label: 'Gemini 1.0 Pro', deprecated: true, deprecationNote: 'This model is end-of-life. Use Gemini 2.5 Pro.' },
+      { id: 'gemini-1.5-pro', label: 'Gemini 1.5 Pro', context: 2097152, description: 'Most capable reasoning model' },
+      { id: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash', context: 1048576, description: 'Fast and efficient' },
+      { id: 'gemini-1.5-flash-8b', label: 'Gemini 1.5 Flash-8B', context: 1048576, description: 'Lightweight model' },
+      { id: 'gemini-1.0-pro', label: 'Gemini 1.0 Pro', deprecated: true, deprecationNote: 'This model is end-of-life. Use Gemini 1.5 Pro.' },
     ],
   },
   {

@@ -666,7 +666,7 @@ type Status = 'idle' | 'recruiting' | 'deliberating' | 'crossExamining' | 'userR
 export default function AgenticVCPage() {
   const [pitch, setPitch] = useState('');
   const [provider, setProvider] = useState<ProviderType>('google');
-  const [model, setModel] = useState('gemini-2.5-pro');
+  const [model, setModel] = useState('gemini-1.5-pro');
   const [apiKey, setApiKey] = useState('');
   const [tavilyApiKey, setTavilyApiKey] = useState('');
   const [mode, setMode] = useState<'vc' | 'board'>('vc');
@@ -726,6 +726,7 @@ export default function AgenticVCPage() {
 
     setErrorMsg(errorMessage);
     setErrorRetryable(retryable);
+    setStatus('idle');
   }, []);
 
   const handleStart = () => {
