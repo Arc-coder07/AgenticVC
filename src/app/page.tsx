@@ -407,8 +407,36 @@ function CommandCenter({
   const [showTavily, setShowTavily] = useState(false);
 
   const providerInfo = PROVIDER_CATALOG.find(p => p.id === provider);
-  const models = getModelsForProvider(provider);
-  const currentModelInfo = getModelInfo(provider, model);
+  const baseModels = getModelsForProvider(provider);
+  
+  // Fetch installed Ollama models
+  const [installedOllamaModels, setInstalledOllamaModels] = useState<any[]>([]);
+  useEffect(() => {
+    if (provider === 'ollama' && ollamaStatus === 'online') {
+      fetch('/api/ollama/tags')
+        .then(res => res.json())
+        .then(data => {
+          if (data.models) {
+            setInstalledOllamaModels(data.models);
+          }
+        })
+        .catch(console.error);
+    }
+  }, [provider, ollamaStatus]);
+
+  let displayModels = baseModels;
+  if (provider === 'ollama' && installedOllamaModels.length > 0) {
+    const installed = installedOllamaModels.map(m => ({
+      id: m.name,
+      label: m.name,
+      description: `Installed (${m.details?.parameter_size || 'Unknown size'})`
+    }));
+    const installedIds = new Set(installed.map(m => m.id));
+    const remainingBase = baseModels.filter(m => !installedIds.has(m.id) && !installedIds.has(`${m.id}:latest`));
+    displayModels = [...installed, ...remainingBase];
+  }
+
+  const currentModelInfo = getModelInfo(provider, model) || displayModels.find(m => m.id === model);
   const keyValidation = validateApiKeyFormat(provider, apiKey);
 
   // Custom model state
@@ -500,7 +528,7 @@ function CommandCenter({
                 <SelectValue placeholder="Select model" />
               </SelectTrigger>
               <SelectContent className="bg-[#0A0A0A] border-white/10 text-slate-300 max-h-[300px]">
-                {models.map(m => (
+                {displayModels.map(m => (
                   <SelectItem key={m.id} value={m.id} className="flex items-center">
                     <div className="flex items-center gap-2 w-full">
                       <span className={m.deprecated ? 'text-slate-500 line-through' : ''}>{m.label}</span>
