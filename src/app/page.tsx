@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel, SelectSeparator } from '@/components/ui/select';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { ShieldAlert, CheckCircle, Flame, Layers, Swords, MessageSquareWarning, FileUp, Loader2, XCircle, Cpu, Eye, EyeOff, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Wifi, WifiOff } from 'lucide-react';
 
@@ -425,15 +425,20 @@ function CommandCenter({
   }, [provider, ollamaStatus]);
 
   let displayModels = baseModels;
+  let hasGroups = false;
+  let installedModelsList: any[] = [];
+  let otherModelsList: any[] = [];
+
   if (provider === 'ollama' && installedOllamaModels.length > 0) {
-    const installed = installedOllamaModels.map(m => ({
+    hasGroups = true;
+    installedModelsList = installedOllamaModels.map(m => ({
       id: m.name,
       label: m.name,
       description: `Installed (${m.details?.parameter_size || 'Unknown size'})`
     }));
-    const installedIds = new Set(installed.map(m => m.id));
-    const remainingBase = baseModels.filter(m => !installedIds.has(m.id) && !installedIds.has(`${m.id}:latest`));
-    displayModels = [...installed, ...remainingBase];
+    const installedIds = new Set(installedModelsList.map(m => m.id));
+    otherModelsList = baseModels.filter(m => !installedIds.has(m.id) && !installedIds.has(`${m.id}:latest`));
+    displayModels = [...installedModelsList, ...otherModelsList];
   }
 
   const currentModelInfo = getModelInfo(provider, model) || displayModels.find(m => m.id === model);
@@ -528,20 +533,53 @@ function CommandCenter({
                 <SelectValue placeholder="Select model" />
               </SelectTrigger>
               <SelectContent className="bg-[#0A0A0A] border-white/10 text-slate-300 max-h-[300px]">
-                {displayModels.map(m => (
-                  <SelectItem key={m.id} value={m.id} className="flex items-center">
-                    <div className="flex items-center gap-2 w-full">
-                      <span className={m.deprecated ? 'text-slate-500 line-through' : ''}>{m.label}</span>
-                      {m.deprecated && (
-                        <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-medium ml-1">
-                          ⚠ Deprecated
-                        </span>
-                      )}
-                    </div>
-                  </SelectItem>
-                ))}
-                <SelectItem value="__custom__" className="border-t border-white/5">
-                  <span className="text-slate-400 italic">Custom model ID...</span>
+                {hasGroups ? (
+                  <>
+                    <SelectGroup>
+                      <SelectLabel className="text-emerald-400 font-semibold px-2 py-1.5 text-[10px] uppercase tracking-wider">Installed locally</SelectLabel>
+                      {installedModelsList.map(m => (
+                        <SelectItem key={m.id} value={m.id} className="flex items-center">
+                          <div className="flex items-center gap-2 w-full">
+                            <span className={m.deprecated ? 'text-slate-500 line-through' : ''}>{m.label}</span>
+                            <span className="text-[9px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full font-medium ml-1">Installed</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                    <SelectSeparator className="bg-white/5" />
+                    <SelectGroup>
+                      <SelectLabel className="text-slate-500 font-semibold px-2 py-1.5 text-[10px] uppercase tracking-wider">Available to pull</SelectLabel>
+                      {otherModelsList.map(m => (
+                        <SelectItem key={m.id} value={m.id} className="flex items-center">
+                          <div className="flex items-center gap-2 w-full">
+                            <span className={m.deprecated ? 'text-slate-500 line-through' : ''}>{m.label}</span>
+                            {m.deprecated && (
+                              <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-medium ml-1">
+                                ⚠ Deprecated
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </>
+                ) : (
+                  displayModels.map(m => (
+                    <SelectItem key={m.id} value={m.id} className="flex items-center">
+                      <div className="flex items-center gap-2 w-full">
+                        <span className={m.deprecated ? 'text-slate-500 line-through' : ''}>{m.label}</span>
+                        {m.deprecated && (
+                          <span className="text-[9px] bg-amber-500/20 text-amber-400 px-1.5 py-0.5 rounded-full font-medium ml-1">
+                            ⚠ Deprecated
+                          </span>
+                        )}
+                      </div>
+                    </SelectItem>
+                  ))
+                )}
+                <SelectSeparator className="bg-white/5" />
+                <SelectItem value="__custom__" className="italic">
+                  <span className="text-slate-400">Custom model ID...</span>
                 </SelectItem>
               </SelectContent>
             </Select>
