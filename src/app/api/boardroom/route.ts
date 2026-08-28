@@ -8,6 +8,7 @@ import { tavily } from '@tavily/core';
 export const maxDuration = 60; // Allow edge functions to run longer if supported
 
 export async function POST(req: Request) {
+  const abortSignal = req.signal; // Used to stop streaming when client disconnects
   let body: any;
 
   try {
@@ -95,6 +96,7 @@ export async function POST(req: Request) {
 
       const result = await streamObject({
         model,
+        abortSignal,
         schema: z.object({ 
           marketAnalysis: z.string().describe("A brief summary of the market based on the real-world context provided."),
           personas: z.array(PersonaSchema).length(3) 
@@ -124,6 +126,7 @@ export async function POST(req: Request) {
 
       const result = await streamObject({
         model,
+        abortSignal,
         schema: CritiqueSchema,
         system: `You are ${persona.name}, ${persona.title}. Background: ${persona.background}.\n\nYour instructions: ${persona.systemPrompt}\n\nYour task is to brutally and honestly critique the provided business pitch. Do not be polite. Find the fatal flaws.`,
         prompt: `The pitch: ${corePitch}\n\nProvide your critique.`,
@@ -149,6 +152,7 @@ export async function POST(req: Request) {
 
       const result = await streamObject({
         model,
+        abortSignal,
         schema: z.object({ personaName: z.string(), rebuttal: z.string() }),
         system: mode === 'vc'
           ? `You are ${persona.name}, ${persona.title}. You must review the critiques from your fellow Investment Committee members and attack them.\nYour task is to aggressively cross-examine their critiques. If they missed something, call it out. If they are wrong, attack their logic. Be brutal but highly analytical.`
@@ -188,6 +192,7 @@ ${userRebuttal ? userRebuttal : "The user chose not to defend the pitch."}
 
       const result = await streamObject({
         model,
+        abortSignal,
         schema: FinalReportSchema,
         system: mode === 'vc'
           ? `You are the Lead Partner of the VC firm. You have heard the business pitch, the brutal critiques, the investment committee's internal debate, and the user's defense. Your job is to synthesize this into a final, actionable Risk & Viability Report. Be highly objective, lean towards the cynical side to protect the firm's capital, and provide actionable pivot recommendations.`
@@ -208,6 +213,11 @@ ${userRebuttal ? userRebuttal : "The user chose not to defend the pitch."}
     );
 
   } catch (error: any) {
+    // Ignore abort errors (client disconnected, Strict Mode cleanup)
+    if (error?.name === 'AbortError' || error?.code === 'ERR_INVALID_STATE' || error?.message?.includes('Controller is already closed')) {
+      return new Response(null, { status: 499 }); // Client Closed Request
+    }
+
     console.error('API Route Error:', error);
     const parsed = parseAPIError(error, config.provider, config.model);
     return new Response(

@@ -505,21 +505,27 @@ function CommandCenter({
   useEffect(() => {
     if (provider !== 'ollama' || ollamaStatus !== 'online') return;
 
+    let cancelled = false;
     const controller = new AbortController();
+
     fetch('/api/ollama/tags', { signal: controller.signal })
-      .then(res => res.json())
+      .then(res => {
+        if (cancelled) return;
+        return res.json();
+      })
       .then(data => {
-        if (!controller.signal.aborted && data.models) {
+        if (!cancelled && data?.models) {
           setInstalledOllamaModels(data.models);
         }
       })
-      .catch(err => {
-        if (err.name !== 'AbortError') {
-          console.error('Failed to fetch Ollama models:', err);
-        }
+      .catch(() => {
+        // Silently ignore — this fires on Strict Mode cleanup abort
       });
 
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [provider, ollamaStatus]);
 
   // Auto-select first installed Ollama model if current model isn't installed
