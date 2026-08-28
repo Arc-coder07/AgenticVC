@@ -168,6 +168,7 @@ function PipelineStatusBar({ status, personas, critiques, crossExaminations, pro
 // --- STAGE COMPONENTS ---
 
 function PersonasStreamer({ pitch, config, onComplete, onError }: { pitch: string, config: any, onComplete: (personas: Persona[]) => void, onError: (msg: string) => void }) {
+  const submitted = useRef(false);
   const { object, submit, isLoading, error } = useObject({
     api: '/api/boardroom',
     schema: z.object({ 
@@ -177,8 +178,12 @@ function PersonasStreamer({ pitch, config, onComplete, onError }: { pitch: strin
   });
 
   useEffect(() => {
-    submit({ action: 'personas', pitch, config });
-  }, [pitch, config, submit]);
+    if (!submitted.current) {
+      submitted.current = true;
+      submit({ action: 'personas', pitch, config });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (error) {
@@ -225,14 +230,19 @@ function PersonasStreamer({ pitch, config, onComplete, onError }: { pitch: strin
 }
 
 function CritiqueStreamerCard({ pitch, config, persona, onComplete, onError }: { pitch: string, config: any, persona: Persona, onComplete: (critique: Critique) => void, onError: (msg: string) => void }) {
+  const submitted = useRef(false);
   const { object, submit, isLoading, error } = useObject({
     api: '/api/boardroom',
     schema: CritiqueSchema,
   });
 
   useEffect(() => {
-    submit({ action: 'critique', pitch, config, persona });
-  }, [pitch, config, persona, submit]);
+    if (!submitted.current) {
+      submitted.current = true;
+      submit({ action: 'critique', pitch, config, persona });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (error) {
@@ -277,14 +287,19 @@ function CritiqueStreamerCard({ pitch, config, persona, onComplete, onError }: {
 
 function CrossExamineStreamerCard({ pitch, config, persona, critiques, onComplete, onError }: { pitch: string, config: any, persona: Persona, critiques: Critique[], onComplete: (cx: CrossExamination) => void, onError: (msg: string) => void }) {
   const mode = config.mode || 'vc';
+  const submitted = useRef(false);
   const { object, submit, isLoading, error } = useObject({
     api: '/api/boardroom',
     schema: CrossExaminationSchema,
   });
 
   useEffect(() => {
-    submit({ action: 'cross-examine', pitch, config, persona, critiques });
-  }, [pitch, config, persona, critiques, submit]);
+    if (!submitted.current) {
+      submitted.current = true;
+      submit({ action: 'cross-examine', pitch, config, persona, critiques });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (error) {
@@ -346,9 +361,14 @@ function SynthesisStreamer({ pitch, config, personas, critiques, crossExaminatio
     pdf.save(`${mode === 'vc' ? 'agenticvc' : 'boardroom'}-premortem.pdf`);
   };
 
+  const submitted = useRef(false);
   useEffect(() => {
-    submit({ action: 'synthesis', pitch, config, personas, critiques, crossExaminations, userRebuttal });
-  }, [pitch, config, personas, critiques, crossExaminations, userRebuttal, submit]);
+    if (!submitted.current) {
+      submitted.current = true;
+      submit({ action: 'synthesis', pitch, config, personas, critiques, crossExaminations, userRebuttal });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="w-full space-y-6 animate-in fade-in slide-in-from-bottom-12 duration-1000">
@@ -872,6 +892,11 @@ export default function AgenticVCPage() {
   // Token tracking
   const tokenTracker = useTokenTracker();
 
+  // Memoize pipeline config to prevent infinite re-render loops in streamer components
+  const pipelineConfig = useMemo(() => ({
+    provider, model, apiKey, tavilyApiKey, mode
+  }), [provider, model, apiKey, tavilyApiKey, mode]);
+
   // Check Ollama connectivity
   useEffect(() => {
     if (provider !== 'ollama') return;
@@ -1218,7 +1243,7 @@ export default function AgenticVCPage() {
                 "Assembling committee personas..."
               ][loadingStepIdx]}
             </h2>
-            <PersonasStreamer pitch={pitch} config={{provider, model, apiKey, tavilyApiKey, mode}} onComplete={handlePersonasComplete} onError={handleError} />
+            <PersonasStreamer pitch={pitch} config={pipelineConfig} onComplete={handlePersonasComplete} onError={handleError} />
           </div>
         )}
 
@@ -1242,9 +1267,9 @@ export default function AgenticVCPage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full">
               {personas.map((persona, idx) => {
                 if (status === 'deliberating') {
-                  return <CritiqueStreamerCard key={`crit-${idx}`} pitch={pitch} config={{provider, model, apiKey, tavilyApiKey, mode}} persona={persona} onComplete={handleCritiqueComplete} onError={handleError} />;
+                  return <CritiqueStreamerCard key={`crit-${idx}`} pitch={pitch} config={pipelineConfig} persona={persona} onComplete={handleCritiqueComplete} onError={handleError} />;
                 } else {
-                  return <CrossExamineStreamerCard key={`cx-${idx}`} pitch={pitch} config={{provider, model, apiKey, tavilyApiKey, mode}} persona={persona} critiques={critiques} onComplete={handleCrossExaminationComplete} onError={handleError} />;
+                  return <CrossExamineStreamerCard key={`cx-${idx}`} pitch={pitch} config={pipelineConfig} persona={persona} critiques={critiques} onComplete={handleCrossExaminationComplete} onError={handleError} />;
                 }
               })}
             </div>
@@ -1296,7 +1321,7 @@ export default function AgenticVCPage() {
             )}
             <SynthesisStreamer 
               pitch={pitch} 
-              config={{provider, model, apiKey, tavilyApiKey, mode}} 
+              config={pipelineConfig} 
               personas={personas} 
               critiques={critiques} 
               crossExaminations={crossExaminations}
