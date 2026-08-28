@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectGroup, SelectLabel, SelectSeparator } from '@/components/ui/select';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { ShieldAlert, CheckCircle, Flame, Layers, Swords, MessageSquareWarning, FileUp, Loader2, XCircle, Cpu, Eye, EyeOff, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Wifi, WifiOff } from 'lucide-react';
+import { ShieldAlert, CheckCircle, Flame, Layers, Swords, MessageSquareWarning, FileUp, Loader2, XCircle, Cpu, Eye, EyeOff, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Wifi, WifiOff, Activity } from 'lucide-react';
 
 import { ProviderType } from '@/lib/llm-client';
 import { PROVIDER_CATALOG, getModelsForProvider, getDefaultModel, getModelInfo } from '@/lib/model-catalog';
@@ -91,6 +91,79 @@ function TokenDisplay({ totalPromptTokens, totalCompletionTokens, totalTokens, s
   );
 }
 
+
+// --- PIPELINE STATUS BAR ---
+
+function PipelineStatusBar({ status, personas, critiques, crossExaminations, provider, model, ollamaStatus }: {
+  status: string;
+  personas: Persona[];
+  critiques: Critique[];
+  crossExaminations: CrossExamination[];
+  provider: string;
+  model: string;
+  ollamaStatus: string;
+}) {
+  if (status === 'idle') return null;
+
+  const stages = [
+    { id: 'recruiting', label: 'Recruiting Personas', done: personas.length === 3 },
+    { id: 'deliberating', label: 'Generating Critiques', done: critiques.length === 3 },
+    { id: 'crossExamining', label: 'Cross-Examination', done: crossExaminations.length === 3 },
+    { id: 'userRebuttal', label: 'Your Defense', done: status === 'compiling' || status === 'done' },
+    { id: 'compiling', label: 'Final Synthesis', done: status === 'done' },
+  ];
+
+  const currentIdx = stages.findIndex(s => s.id === status);
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-xl border-t border-white/[0.08] px-6 py-3">
+      <div className="max-w-6xl mx-auto flex items-center justify-between">
+        {/* Provider + Model Info */}
+        <div className="flex items-center space-x-3 min-w-0">
+          <Activity className="w-4 h-4 text-emerald-400 animate-pulse flex-shrink-0" />
+          <div className="text-xs text-slate-400 truncate">
+            <span className="text-slate-500">Running on</span>{' '}
+            <span className="text-white font-medium">{provider}</span>{' '}
+            <span className="text-slate-500">→</span>{' '}
+            <span className="text-slate-300 font-mono">{model}</span>
+            {provider === 'ollama' && (
+              <span className={`ml-2 ${ollamaStatus === 'online' ? 'text-emerald-400' : 'text-red-400'}`}>
+                ({ollamaStatus})
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* Stage Progress */}
+        <div className="flex items-center space-x-1">
+          {stages.map((stage, i) => {
+            const isActive = i === currentIdx;
+            const isDone = stage.done;
+            return (
+              <div key={stage.id} className="flex items-center">
+                <div className={`flex items-center space-x-1.5 px-2 py-1 rounded-full text-[10px] font-medium uppercase tracking-wider transition-all ${
+                  isDone
+                    ? 'text-emerald-400 bg-emerald-500/10'
+                    : isActive
+                    ? 'text-white bg-white/10'
+                    : 'text-slate-600'
+                }`}>
+                  {isDone && <CheckCircle className="w-3 h-3" />}
+                  {isActive && !isDone && <Loader2 className="w-3 h-3 animate-spin" />}
+                  <span className="hidden md:inline">{stage.label}</span>
+                  <span className="md:hidden">{i + 1}</span>
+                </div>
+                {i < stages.length - 1 && (
+                  <div className={`w-4 h-px mx-0.5 ${isDone ? 'bg-emerald-500/40' : 'bg-white/10'}`} />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // --- STAGE COMPONENTS ---
 
@@ -385,6 +458,24 @@ function SynthesisStreamer({ pitch, config, personas, critiques, crossExaminatio
   );
 }
 
+// --- PROVIDER ICONS ---
+
+function ProviderIcon({ provider }: { provider: string }) {
+  // Temporary Lucide icons - waiting for the user to provide official SVG paths
+  switch (provider) {
+    case 'google':
+      return <div className="text-blue-400"><Layers className="w-8 h-8" /></div>;
+    case 'groq':
+      return <div className="text-orange-500"><Flame className="w-8 h-8" /></div>;
+    case 'openrouter':
+      return <div className="text-indigo-400"><RefreshCw className="w-8 h-8" /></div>;
+    case 'ollama':
+      return <div className="text-emerald-400"><Cpu className="w-8 h-8" /></div>;
+    default:
+      return <div className="text-slate-400"><Cpu className="w-8 h-8" /></div>;
+  }
+}
+
 // --- COMMAND CENTER ---
 
 function CommandCenter({ 
@@ -412,17 +503,41 @@ function CommandCenter({
   // Fetch installed Ollama models
   const [installedOllamaModels, setInstalledOllamaModels] = useState<any[]>([]);
   useEffect(() => {
-    if (provider === 'ollama' && ollamaStatus === 'online') {
-      fetch('/api/ollama/tags')
-        .then(res => res.json())
-        .then(data => {
-          if (data.models) {
-            setInstalledOllamaModels(data.models);
-          }
-        })
-        .catch(console.error);
-    }
+    if (provider !== 'ollama' || ollamaStatus !== 'online') return;
+
+    const controller = new AbortController();
+    fetch('/api/ollama/tags', { signal: controller.signal })
+      .then(res => res.json())
+      .then(data => {
+        if (!controller.signal.aborted && data.models) {
+          setInstalledOllamaModels(data.models);
+        }
+      })
+      .catch(err => {
+        if (err.name !== 'AbortError') {
+          console.error('Failed to fetch Ollama models:', err);
+        }
+      });
+
+    return () => controller.abort();
   }, [provider, ollamaStatus]);
+
+  // Auto-select first installed Ollama model if current model isn't installed
+  useEffect(() => {
+    if (provider === 'ollama' && installedOllamaModels.length > 0) {
+      const installedNames = new Set(installedOllamaModels.map((m: any) => m.name));
+      // Check if current model (or model:latest) is installed
+      if (!installedNames.has(model) && !installedNames.has(`${model}:latest`)) {
+        // Filter out embedding models and pick the first real model
+        const chatModel = installedOllamaModels.find((m: any) => 
+          !m.name.includes('embed') && !m.name.includes('nomic')
+        ) || installedOllamaModels[0];
+        if (chatModel) {
+          setModel(chatModel.name);
+        }
+      }
+    }
+  }, [provider, installedOllamaModels, model, setModel]);
 
   let displayModels = baseModels;
   let hasGroups = false;
@@ -497,7 +612,7 @@ function CommandCenter({
                   : 'border-white/[0.06] bg-white/[0.02] hover:border-white/15 hover:bg-white/[0.04]'
               }`}
             >
-              <span className="text-2xl">{p.icon}</span>
+              <ProviderIcon provider={p.id} />
               <span className={`text-xs font-semibold tracking-wide ${provider === p.id ? 'text-white' : 'text-slate-400'}`}>
                 {p.label}
               </span>
@@ -755,23 +870,30 @@ export default function AgenticVCPage() {
   useEffect(() => {
     if (provider !== 'ollama') return;
     setOllamaStatus('checking');
+    let cancelled = false;
     
     const checkOllama = async () => {
       try {
-        const res = await fetch('http://localhost:11434/api/tags', { signal: AbortSignal.timeout(3000) });
-        if (res.ok) {
-          setOllamaStatus('online');
-        } else {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch('http://localhost:11434/api/tags', { signal: controller.signal });
+        clearTimeout(timeoutId);
+        if (!cancelled) {
+          setOllamaStatus(res.ok ? 'online' : 'offline');
+        }
+      } catch (err: any) {
+        if (!cancelled && err?.name !== 'AbortError') {
           setOllamaStatus('offline');
         }
-      } catch {
-        setOllamaStatus('offline');
       }
     };
 
     checkOllama();
     const interval = setInterval(checkOllama, 15000); // Re-check every 15s
-    return () => clearInterval(interval);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
   }, [provider]);
 
   useEffect(() => {
@@ -1180,6 +1302,17 @@ export default function AgenticVCPage() {
         )}
 
       </main>
+
+      {/* Pipeline Status Bar */}
+      <PipelineStatusBar
+        status={status}
+        personas={personas}
+        critiques={critiques}
+        crossExaminations={crossExaminations}
+        provider={provider}
+        model={model}
+        ollamaStatus={ollamaStatus}
+      />
     </div>
   );
 }

@@ -56,6 +56,14 @@ export function parseAPIError(error: unknown, provider: ProviderType, model: str
 
   // Model not found
   if (statusCode === 404 || message.includes('not found') || message.includes('does not exist') || message.includes('is not available')) {
+    if (provider === 'ollama') {
+      return {
+        message: `Model '${model}' is not installed in Ollama. Pull it with: ollama pull ${model}`,
+        code: 'MODEL_NOT_FOUND',
+        retryable: false,
+        details: `Run "ollama pull ${model}" in your terminal, or select a model that's already installed.`,
+      };
+    }
     return {
       message: `Model '${model}' not found on ${providerLabel}. Please select a valid model.`,
       code: 'MODEL_NOT_FOUND',
