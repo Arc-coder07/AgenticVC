@@ -16,7 +16,7 @@ import { useTokenTracker } from '@/lib/token-tracker';
 import { Persona, Critique, CrossExamination, FinalReport, PersonaSchema, CritiqueSchema, CrossExaminationSchema, FinalReportSchema } from '@/lib/schemas';
 import { experimental_useObject as useObject } from '@ai-sdk/react';
 import { z } from 'zod';
-import html2canvas from 'html2canvas';
+import { toPng } from 'html-to-image';
 import { jsPDF } from 'jspdf';
 import { useRef, useMemo, useCallback } from 'react';
 import HowItWorksDiagram from '@/components/ui/HowItWorksDiagram';
@@ -352,12 +352,16 @@ function SynthesisStreamer({ pitch, config, personas, critiques, crossExaminatio
 
   const exportPDF = async () => {
     if (!containerRef.current) return;
-    const canvas = await html2canvas(containerRef.current, { backgroundColor: '#000000', scale: 2 });
-    const imgData = canvas.toDataURL('image/png');
+    const dataUrl = await toPng(containerRef.current, { backgroundColor: '#000000', pixelRatio: 2 });
     const pdf = new jsPDF('p', 'mm', 'a4');
     const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+    // Assuming a generic A4 aspect ratio for height calculation if we don't have canvas dimensions,
+    // or we can load the image to get dimensions. Since it's a dataUrl, we can just use an Image object.
+    const img = new Image();
+    img.src = dataUrl;
+    await new Promise((resolve) => { img.onload = resolve; });
+    const pdfHeight = (img.height * pdfWidth) / img.width;
+    pdf.addImage(dataUrl, 'PNG', 0, 0, pdfWidth, pdfHeight);
     pdf.save(`${mode === 'vc' ? 'agenticvc' : 'boardroom'}-premortem.pdf`);
   };
 
